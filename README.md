@@ -130,4 +130,4 @@ Based on:
 
 ## License
 
-MIT — do whatever you want with it.
+WTFPL — Do What The Fuck You Want To Public License.

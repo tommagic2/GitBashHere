@@ -1,0 +1,129 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Compile DLL
+        shell: cmd
+        run: |
+          if not exist "Release" mkdir Release
+          cl.exe /c /Zi /nologo /W3 /WX- /sdl /O2 ^
+              /D WIN32 /D NDEBUG /D _WINDOWS /D _USRDLL /D _WINDLL /D _UNICODE /D UNICODE ^
+              /EHsc /MD /GS /Gy /Gd /TP ^
+              /Fo"Release\\" /Fd"Release\GitBashHere.pdb" ^
+              "handler\dllmain.cpp"
+
+      - name: Link DLL
+        shell: cmd
+        run: |
+          link.exe /ERRORREPORT:QUEUE /OUT:"Release\GitBashHere.dll" ^
+              /INCREMENTAL:NO /NOLOGO ^
+              runtimeobject.lib kernel32.lib user32.lib gdi32.lib ^
+              advapi32.lib shell32.lib ole32.lib oleaut32.lib ^
+              uuid.lib shlwapi.lib ^
+              /DEF:"handler\Source.def" ^
+              /MANIFEST:NO ^
+              /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF ^
+              /TLBID:1 /DYNAMICBASE /NXCOMPAT ^
+              /IMPLIB:"Release\GitBashHere.lib" ^
+              /MACHINE:X64 /DLL ^
+              "Release\dllmain.obj"
+
+      - name: Prepare sparse package files
+        shell: cmd
+        run: |
+          if not exist "Release\sparse-pkg" mkdir Release\sparse-pkg
+          copy /Y "sparse-pkg\AppxManifest.xml" "Release\sparse-pkg\AppxManifest.xml"
+
+      - name: Create package icon
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $bmp = New-Object System.Drawing.Bitmap 150,150
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.Clear([System.Drawing.Color]::FromArgb(240,81,51))
+          $g.Dispose()
+          $bmp.Save('Release\sparse-pkg\git-bash.png', [System.Drawing.Imaging.ImageFormat]::Png)
+          $bmp.Dispose()
+
+      - name: Create MSIX package
+        shell: cmd
+        run: |
+          MakeAppx.exe pack /d "Release\sparse-pkg" /p "Release\GitBashHere.appx" /nv
+
+      - name: Create self-signed certificate
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate `
+              -Type Custom `
+              -Subject "CN=localhost" `
+              -KeyUsage DigitalSignature `
+              -FriendlyName "GitBashHere" `
+              -CertStoreLocation "Cert:\CurrentUser\My" `
+              -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3,1.3.6.1.4.1.311.10.3.13") `
+              -NotAfter (Get-Date).AddYears(50)
+
+          $password = ConvertTo-SecureString -String "GitBashHere" -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath "Release\Key.pfx" -Password $password | Out-Null
+          Export-Certificate -Cert $cert -FilePath "Release\Key.cer" | Out-Null
+          Write-Host "Certificate thumbprint: $($cert.Thumbprint)"
+
+      - name: Sign MSIX package
+        shell: cmd
+        run: |
+          SignTool.exe sign /fd SHA256 /a /f "Release\Key.pfx" /p "GitBashHere" "Release\GitBashHere.appx"
+
+      - name: Assemble release package
+        shell: pwsh
+        run: |
+          $releaseDir = "GitBashHere-Release"
+          New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+
+          # Copy built artifacts
+          Copy-Item "Release\GitBashHere.dll"  $releaseDir
+          Copy-Item "Release\GitBashHere.appx" $releaseDir
+          Copy-Item "Release\Key.cer"          $releaseDir
+
+          # Copy install/uninstall scripts
+          Copy-Item "install.cmd"    $releaseDir
+          Copy-Item "install.ps1"    $releaseDir
+          Copy-Item "uninstall.cmd"  $releaseDir
+          Copy-Item "uninstall.ps1"  $releaseDir
+
+          # Copy docs
+          Copy-Item "README.md"      $releaseDir
+          Copy-Item "LICENSE"        $releaseDir
+
+          # Zip it up
+          Compress-Archive -Path "$releaseDir\*" -DestinationPath "GitBashHere-Release.zip" -Force
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GitBashHere-Release
+          path: GitBashHere-Release.zip
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: GitBashHere-Release.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
