@@ -2,7 +2,7 @@
 
 Adds **"Git Bash Here"** to the Windows 11 top-level right-click context menu (not buried under "Show more options").
 
-This works by implementing a COM DLL with the `IExplorerCommand` interface and registering it via a Sparse MSIX package to give it app identity — the same mechanism apps like AMD Software, WinMerge, and VS Code use.
+This works by implementing a COM DLL with the `IExplorerCommand` interface and registering it via a Sparse MSIX package to give it app identity — the same mechanism apps like Terminal, WinMerge, and VS Code use.
 
 ---
 
@@ -21,11 +21,7 @@ If Git is installed somewhere else, edit the paths at the top of `handler\dllmai
 
 ### 1. Build
 
-Open **"x64 Native Tools Command Prompt for VS 2022"** (find it in the Start Menu under Visual Studio 2022), navigate to this folder, and run:
-
-```
-build.cmd
-```
+Double-click **`build.cmd`**. It automatically finds your Visual Studio installation and sets up the compiler environment — no need to open a special command prompt.
 
 The certificate tools will prompt you for a password — you can use anything (even just press Enter for blank) but use the **same input each time** it asks. This creates a self-signed certificate for local/personal use only.
 
@@ -36,11 +32,7 @@ Output lands in `Release\`:
 
 ### 2. Install
 
-From an **elevated PowerShell** (Run as Administrator):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File install.ps1
-```
+Double-click **`install.cmd`**. It will prompt for Administrator privileges via UAC automatically.
 
 This:
 1. Copies the DLL and package to `C:\Program Files\GitBashHere\`
@@ -57,11 +49,7 @@ Right-click on a folder, on a file, or on the empty background inside any folder
 
 ## Uninstall
 
-From an **elevated PowerShell**:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File uninstall.ps1
-```
+Double-click **`uninstall.cmd`**. It will prompt for Administrator privileges via UAC automatically.
 
 This removes the package, COM registration, certificate, and installed files.
 
